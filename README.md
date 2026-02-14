@@ -8,6 +8,7 @@ Automated **nadai** (beat subdivision) detection for Carnatic rhythm from audio,
 
 - **[Pipeline flowchart & method descriptions](docs/pipeline_flowchart.md)** — Mermaid diagram of the main controller and all callees, plus short explanations of what each method does.
 - **[Architecture & technical reference](docs/ARCHITECTURE.md)** — Project architecture, technical concepts (SSM, features, diagonal lines, nadai), libraries used with links to their official docs, and a data-flow summary for collaborators.
+- **[Robustness improvements](docs/IMPROVEMENTS.md)** — Seven improvement docs (input validation, feature/SSM quality, repetition detection, rhythm structure, nadai classification, end-to-end confidence & retry, warnings & structured errors) for students to implement independently; each includes concept explanation, suggested libraries, and a flowchart.
 
 ---
 

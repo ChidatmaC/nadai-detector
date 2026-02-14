@@ -102,6 +102,84 @@ flowchart TB
     compile --> Output
 ```
 
+---
+
+## What each method does
+
+### Entry
+
+- **`main()`** — Command-line entry point. Parses arguments (audio file path, output directory, quiet flag), creates the pipeline, and calls `detect_and_save()`.
+- **`NadaiDetectionPipeline(verbose)`** — Builds the pipeline and creates the SSM analyzer and repetition detector used in later stages.
+- **`detect_and_save(audio_path, output_dir)`** — Runs the full detection pipeline, then (if `output_dir` is set) writes JSON, plot, and text report to disk.
+
+---
+
+### Stage 0: Validation
+
+- **`validate_audio_file(audio_path)`** — Ensures the input is usable: file exists, extension is supported (e.g. .wav, .mp3, .flac), and the file can be read.
+- **Path/suffix check** — Confirms the path exists and the suffix is in `SUPPORTED_AUDIO_FORMATS`.
+- **`get_audio_info(audio_path)`** — Reads metadata (duration, sample rate, channels). Tries `soundfile` first; if the format isn’t recognised, falls back to loading with `librosa` to get duration and sample rate.
+- **Duration check** — Ensures duration is between `MIN_AUDIO_DURATION` and `MAX_AUDIO_DURATION` (e.g. 2 s–10 min).
+
+---
+
+### Stage 1: Feature extraction
+
+- **`extract_features(audio_path, feature_type)`** — Convenience wrapper that creates a `FeatureExtractor` and calls its `extract()` with the chosen feature type.
+- **`FeatureExtractor(sr, hop_length)`** — Holds sample rate and hop length used for framing and feature computation.
+- **`extractor.extract(audio_path, feature_type)`** — Loads the audio with librosa, computes the requested feature representation (mfcc, chroma, tempogram, or combined), then converts frame indices to time stamps.
+- **`_extract_mfcc`** — Mel-frequency cepstral coefficients plus deltas for timbre and temporal change.
+- **`_extract_chroma`** — Chroma (pitch class) features for harmonic content.
+- **`_extract_tempogram`** — Tempogram from onset strength for rhythmic structure.
+- **`_extract_combined`** — Stack of mel (dB), spectral contrast, and onset strength, tuned for rhythm.
+- **`librosa.frames_to_time(...)`** — Maps each frame index to a time in seconds using hop length and sample rate.
+
+---
+
+### Stage 2: Self-similarity matrix (SSM)
+
+- **`compute_ssm(features, normalize)`** — Builds the self-similarity matrix: optionally normalises features, then computes pairwise distances (e.g. cosine) and converts them to similarities (e.g. 1 − distance for cosine).
+- **`enhance_ssm(ssm, filter_width)`** — Smooths the SSM along rows and columns with a uniform filter to make diagonal structures clearer (optional, controlled by `SSM_ENHANCE`).
+
+---
+
+### Stage 3: Repetition detection
+
+- **`find_diagonal_lines(ssm, times, min_length, threshold)`** — Scans the SSM at each lag; where similarity is above `threshold` for at least `min_length` seconds, it records a diagonal line segment.
+- **`_create_line_dict(...)`** — Turns a run of frame indices at a given lag into one dict: start/end time, duration, lag in seconds, and average strength along the diagonal.
+
+---
+
+### Stage 4: Rhythm structure
+
+- **`analyze_repetition(diagonal_lines, ssm, times)`** — Derives phrase period, number of beats per phrase, and subdivisions per beat from the diagonal lines.
+- **`_find_period(diagonal_lines)`** — Picks the dominant phrase period by clustering lag times (with a tolerance) and taking the median of the largest cluster; uses only strong, long-enough lines.
+- **`_find_sub_patterns(diagonal_lines, period)`** — Finds shorter repetitions that are approximate integer divisions of the phrase period; filters by strength and division count.
+- **`_group_by_lag(diagonal_lines, period)`** — Groups diagonal lines by similar lag (within tolerance) so each group can be treated as one sub-pattern.
+- **`_determine_structure(period, sub_patterns)`** — Infers beats per phrase and subdivisions per beat by matching total divisions to common Carnatic beat/nadai combinations; falls back to defaults if needed.
+
+---
+
+### Stage 5: Nadai classification
+
+- **`classify_nadai(subdivisions_per_beat)`** — Maps the (rounded) subdivision count to a nadai name and value using `NADAI_DEFINITIONS` (e.g. tisra, caturasra, khanda, misra, sankirna).
+- **`_is_power_of_2(n)`** — Helper used to distinguish caturasra-like (powers of 2) from other types when assigning nadai.
+
+---
+
+### Output (if `output_dir` is set)
+
+- **Save JSON** — Writes a summary of the result (no large arrays) to `output_dir/json/<audio_stem>_result.json`.
+- **`visualize_complete_analysis(result, audio_path, save_path)`** — Builds a multi-panel figure: SSM with diagonals, time-lag matrix, sub-patterns, diagonal strength, and a text summary; saves as PNG.
+- **`plot_ssm`** — Draws the SSM and overlaid diagonal lines (coloured by strength) and optional period grid.
+- **`plot_time_lag`** — Builds the time-lag matrix from the SSM and plots it (uses `compute_time_lag_matrix(ssm, times)`).
+- **`plot_sub_patterns`** — Plots the detected sub-patterns (e.g. period vs strength).
+- **`plot_diagonal_strength`** — Visualises strength or density of diagonals (e.g. by lag).
+- **`plot_summary`** — Text summary panel (nadai type, value, timing).
+- **`generate_report(result, output_path)`** — Fills a text template with the detection result (nadai, timing, BPM, file path) and writes it to `output_path` (e.g. `*_report.txt`).
+
+---
+
 ## Module summary
 
 | Component | Module | Key entry points |
